@@ -192,7 +192,7 @@ export default function Home() {
     <main className="appShell">
       <header className="topbar">
         <div>
-          <p className="eyebrow">Machado Filgueiras · Previdenciario</p>
+          <p className="eyebrow">Breno Borges · Previdenciario</p>
           <h1>Planejamento previdenciario</h1>
         </div>
         <div className="tokenBox">
