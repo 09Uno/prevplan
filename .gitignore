@@ -10,5 +10,5 @@ node_modules/
 out/
 .DS_Store
 uploads/
-storage/
+!/backend/app/storage/
 *.log
