@@ -1,0 +1,40 @@
+[project]
+name = "previdenciario-comparador-backend"
+version = "0.1.0"
+description = "Pipeline deterministico para comparar calculos previdenciarios."
+requires-python = ">=3.11"
+dependencies = [
+  "anthropic>=0.40.0",
+  "fastapi>=0.115.0",
+  "openpyxl>=3.1.5",
+  "pandas>=2.2.3",
+  "pdfplumber>=0.11.4",
+  "psycopg[binary]>=3.2.3",
+  "pydantic>=2.9.2",
+  "pydantic-settings>=2.6.1",
+  "pymupdf>=1.24.13",
+  "python-docx>=1.1.2",
+  "python-multipart>=0.0.17",
+  "uvicorn[standard]>=0.32.0"
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[project.optional-dependencies]
+dev = [
+  "httpx>=0.27.2",
+  "pytest>=8.3.3",
+  "ruff>=0.8.0"
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 100

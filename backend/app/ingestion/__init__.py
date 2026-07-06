@@ -1,0 +1,2 @@
+"""Ingestao e normalizacao deterministica."""
+

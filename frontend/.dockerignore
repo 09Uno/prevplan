@@ -1,0 +1,7 @@
+node_modules
+.next
+out
+server.out.log
+server.err.log
+.env
+npm-debug.log*

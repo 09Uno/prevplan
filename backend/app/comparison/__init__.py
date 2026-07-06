@@ -1,0 +1,2 @@
+"""Comparacao e regras deterministicas."""
+
