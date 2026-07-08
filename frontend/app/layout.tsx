@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Planejamento Previdenciario",
-  description: "Mini SaaS interno para planejamento previdenciario"
+  title: "Comparador de Calculos Previdenciarios",
+  description: "Mini SaaS interno para comparacao deterministica de calculos previdenciarios"
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

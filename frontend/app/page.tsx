@@ -1,140 +1,171 @@
 "use client";
 
-import { ChangeEvent, useMemo, useState } from "react";
+import { ChangeEvent, ReactNode, useMemo, useState } from "react";
 import {
   AlertTriangle,
-  CalendarClock,
-  CheckCircle2,
+  Archive,
+  BadgeDollarSign,
+  Building2,
   Download,
-  FileCheck2,
+  FileSearch,
   FileText,
-  Gauge,
+  Gavel,
   Landmark,
   Loader2,
   Lock,
   Scale,
-  ShieldCheck,
+  ShieldAlert,
   UploadCloud
 } from "lucide-react";
 
-type Gender = "male" | "female";
-type DocumentType = "cnis" | "ctps" | "ppp" | "ltcat" | "ctc" | "report" | "id" | "other";
-type Status = "available" | "projected" | "needs_review" | "not_applicable";
+type Source = "office" | "inss" | "court_accounting" | "unknown";
+type DivergenceType =
+  | "index"
+  | "marco"
+  | "abatement"
+  | "interest"
+  | "honoraries"
+  | "rmi"
+  | "total"
+  | "other";
 type Severity = "info" | "warning" | "critical";
 
-type InsuredProfile = {
-  name: string;
-  gender: Gender;
-  birth_date: string;
-  analysis_date: string;
-  current_contribution_years: number;
-  current_contribution_months: number;
-  current_contribution_days: number;
-  contribution_base: string;
-  contributor_type: "employee" | "individual";
-  special_months_before_2019: number;
-  special_factor: string;
-  target_monthly_income?: string;
-};
-
-type DocumentInsight = {
-  id: string;
+type EvidenceRef = {
   file_name: string;
-  document_type: DocumentType;
-  pages: number;
+  page?: number | null;
+  text: string;
+  locator?: string | null;
+};
+
+type ExtractedValue = {
+  value?: unknown;
+  normalized?: unknown;
   confidence: number;
-  extracted_name?: string;
-  contribution_duration_text?: string;
-  detected_signals: string[];
+  evidence?: EvidenceRef | null;
 };
 
-type Scenario = {
+type ExtractedCalculation = {
   id: string;
-  rule_code: string;
-  title: string;
-  status: Status;
-  eligibility_date?: string;
-  age_at_der: string;
-  contribution_time: string;
-  points?: string;
-  estimated_rmi: string;
-  coefficient: string;
-  future_contribution_months: number;
-  future_investment: string;
-  recovery_months?: string;
-  roi_estimate: string;
-  recommendation_score: string;
-  legal_basis: string;
-  caveats: string[];
+  source: Source;
+  file_name: string;
+  process_number?: ExtractedValue | null;
+  beneficiary_name?: ExtractedValue | null;
+  rmi?: ExtractedValue | null;
+  dib?: ExtractedValue | null;
+  dip?: ExtractedValue | null;
+  calculation_until?: ExtractedValue | null;
+  correction_index?: ExtractedValue | null;
+  interest_rate?: ExtractedValue | null;
+  principal?: ExtractedValue | null;
+  arrears?: ExtractedValue | null;
+  abatements?: ExtractedValue | null;
+  honoraries?: ExtractedValue | null;
+  total?: ExtractedValue | null;
+  flags: string[];
 };
 
-type PendingIssue = {
+type Divergence = {
   id: string;
-  severity: Severity;
+  type: DivergenceType;
+  field: string;
   title: string;
   description: string;
-  document_type?: DocumentType;
+  sources: Source[];
+  values: Record<string, unknown>;
+  magnitude_money?: string | number | null;
+  magnitude_percent?: string | number | null;
+  favored_party: "segurado" | "inss" | "neutral" | "unknown";
+  severity: Severity;
+  legal_basis?: string | null;
+  evidence: EvidenceRef[];
 };
 
-type NormativeReference = {
-  code: string;
-  title: string;
-  effective_from: string;
-  summary: string;
-  source_url: string;
-  tags: string[];
-};
-
-type PlanningCase = {
+type ComparisonResult = {
   id: string;
-  profile: InsuredProfile;
-  documents: DocumentInsight[];
-  normative_references: NormativeReference[];
-  scenarios: Scenario[];
-  pending_issues: PendingIssue[];
-  recommendation: string;
-  report_markdown: string;
+  process_number?: string | null;
+  calculations: ExtractedCalculation[];
+  divergences: Divergence[];
+  summary: {
+    calculation_count?: number;
+    divergence_count?: number;
+    divergences_by_type?: Record<string, number>;
+    sources?: Source[];
+  };
+  created_at: string;
 };
 
-const ACCESS_TOKEN_STORAGE_KEY = "previdenciario-planner-access-token";
-
-const DEFAULT_PROFILE: InsuredProfile = {
-  name: "Segurado(a) em validacao",
-  gender: "male",
-  birth_date: "1973-03-05",
-  analysis_date: "2026-06-04",
-  current_contribution_years: 32,
-  current_contribution_months: 6,
-  current_contribution_days: 0,
-  contribution_base: "8475.55",
-  contributor_type: "employee",
-  special_months_before_2019: 0,
-  special_factor: "1.4",
-  target_monthly_income: ""
+type DraftResult = {
+  mode: "template" | "anthropic";
+  text: string;
+  model?: string | null;
+  warnings: string[];
 };
 
-const DOC_LABELS: Record<DocumentType, string> = {
-  cnis: "CNIS",
-  ctps: "CTPS",
-  ppp: "PPP",
-  ltcat: "LTCAT",
-  ctc: "CTC",
-  report: "Parecer",
-  id: "Identificacao",
-  other: "Outro"
+const ACCESS_TOKEN_STORAGE_KEY = "previdenciario-comparador-access-token";
+
+const SOURCE_LABELS: Record<Source, string> = {
+  office: "Escritório / autor",
+  inss: "INSS",
+  court_accounting: "Contadoria judicial",
+  unknown: "Fonte não identificada"
 };
 
-const STATUS_LABELS: Record<Status, string> = {
-  available: "Disponivel",
-  projected: "Projetado",
-  needs_review: "Revisar",
-  not_applicable: "Nao aplicavel"
+const SOURCE_SHORT: Record<Source, string> = {
+  office: "Autor",
+  inss: "INSS",
+  court_accounting: "Contadoria",
+  unknown: "Não identificado"
 };
+
+const TYPE_LABELS: Record<DivergenceType, string> = {
+  index: "Índices",
+  marco: "Marcos",
+  abatement: "Abatimentos",
+  interest: "Juros",
+  honoraries: "Honorários",
+  rmi: "RMI",
+  total: "Valores totais",
+  other: "Outros"
+};
+
+const FIELD_LABELS: Record<string, string> = {
+  rmi: "RMI",
+  dib: "DIB",
+  dip: "DIP",
+  calculation_until: "Atualização até",
+  correction_index: "Índice",
+  interest_rate: "Juros",
+  principal: "Principal",
+  arrears: "Atrasados",
+  abatements: "Abatimentos",
+  honoraries: "Honorários",
+  total: "Total"
+};
+
+const FIELD_ORDER = [
+  "rmi",
+  "dib",
+  "dip",
+  "calculation_until",
+  "correction_index",
+  "interest_rate",
+  "principal",
+  "arrears",
+  "abatements",
+  "honoraries",
+  "total"
+];
+
+const MONEY_FIELDS = new Set(["rmi", "principal", "arrears", "abatements", "honoraries", "total"]);
+const DATE_FIELDS = new Set(["dib", "dip", "calculation_until"]);
 
 export default function Home() {
-  const [profile, setProfile] = useState<InsuredProfile>(DEFAULT_PROFILE);
-  const [files, setFiles] = useState<File[]>([]);
-  const [planning, setPlanning] = useState<PlanningCase | null>(null);
+  const [officeFiles, setOfficeFiles] = useState<File[]>([]);
+  const [inssFiles, setInssFiles] = useState<File[]>([]);
+  const [courtFiles, setCourtFiles] = useState<File[]>([]);
+  const [autoFiles, setAutoFiles] = useState<File[]>([]);
+  const [comparison, setComparison] = useState<ComparisonResult | null>(null);
+  const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [accessToken, setAccessToken] = useState(() => {
@@ -144,35 +175,26 @@ export default function Home() {
     return window.localStorage.getItem(ACCESS_TOKEN_STORAGE_KEY) ?? "";
   });
 
-  const bestScenario = useMemo(
-    () =>
-      planning?.scenarios
-        .filter((scenario) => scenario.status !== "not_applicable")
-        .sort((a, b) => Number(b.recommendation_score) - Number(a.recommendation_score))[0],
-    [planning]
+  const relevantCalculations = comparison?.calculations.filter((item) => item.source !== "unknown") ?? [];
+  const moneyDivergences = comparison?.divergences.filter((item) => item.magnitude_money != null) ?? [];
+  const priorityDivergences = useMemo(
+    () => [...(comparison?.divergences ?? [])].sort(sortDivergences).slice(0, 5),
+    [comparison]
   );
-
-  const criticalIssues = planning?.pending_issues.filter((issue) => issue.severity === "critical").length ?? 0;
-
-  function updateProfile<K extends keyof InsuredProfile>(key: K, value: InsuredProfile[K]) {
-    setProfile((current) => ({ ...current, [key]: value }));
-  }
-
-  function onFiles(event: ChangeEvent<HTMLInputElement>) {
-    setFiles(Array.from(event.target.files ?? []));
-  }
 
   async function analyze() {
     setBusy(true);
     setError("");
+    setDraft("");
     try {
       const form = new FormData();
-      form.append("profile_json", JSON.stringify(cleanProfile(profile)));
-      for (const file of files) {
-        form.append("case_files", file);
-      }
+      appendFiles(form, "office_files", officeFiles);
+      appendFiles(form, "inss_files", inssFiles);
+      appendFiles(form, "court_files", courtFiles);
+      appendFiles(form, "auto_files", autoFiles);
+
       window.localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, accessToken);
-      const response = await fetch("/api/planning/analyze", {
+      const response = await fetch("/api/cases/analyze", {
         method: "POST",
         headers: accessToken ? { "X-Access-Token": accessToken } : undefined,
         body: form
@@ -180,11 +202,28 @@ export default function Home() {
       if (!response.ok) {
         throw new Error(await readableError(response));
       }
-      setPlanning((await response.json()) as PlanningCase);
+      const result = (await response.json()) as ComparisonResult;
+      setComparison(result);
+      await buildDraft(result);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Falha ao analisar o planejamento.");
+      setError(err instanceof Error ? err.message : "Falha ao analisar os cálculos.");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function buildDraft(result: ComparisonResult) {
+    const response = await fetch("/api/drafts", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(accessToken ? { "X-Access-Token": accessToken } : {})
+      },
+      body: JSON.stringify({ comparison: result, target: "both", use_ai: false })
+    });
+    if (response.ok) {
+      const payload = (await response.json()) as DraftResult;
+      setDraft(payload.text);
     }
   }
 
@@ -192,10 +231,10 @@ export default function Home() {
     <main className="appShell">
       <header className="topbar">
         <div>
-          <p className="eyebrow">Breno Borges · Previdenciario</p>
-          <h1>Planejamento previdenciario</h1>
+          <p className="eyebrow">Borges e Camargo · Cumprimento de sentença</p>
+          <h1>Comparador de cálculos previdenciários</h1>
         </div>
-        <div className="tokenBox">
+        <label className="tokenBox">
           <Lock size={17} />
           <input
             aria-label="Token de acesso"
@@ -204,208 +243,184 @@ export default function Home() {
             type="password"
             value={accessToken}
           />
-        </div>
+        </label>
       </header>
 
       <section className="workbench">
         <aside className="controlRail">
           <div className="railHeader">
-            <Scale size={20} />
-            <strong>Dados do caso</strong>
-          </div>
-
-          <label className="field wide">
-            <span>Nome</span>
-            <input value={profile.name} onChange={(event) => updateProfile("name", event.target.value)} />
-          </label>
-
-          <div className="fieldGrid">
-            <label className="field">
-              <span>Sexo</span>
-              <select
-                value={profile.gender}
-                onChange={(event) => updateProfile("gender", event.target.value as Gender)}
-              >
-                <option value="male">Homem</option>
-                <option value="female">Mulher</option>
-              </select>
-            </label>
-            <label className="field">
-              <span>Nascimento</span>
-              <input
-                type="date"
-                value={profile.birth_date}
-                onChange={(event) => updateProfile("birth_date", event.target.value)}
-              />
-            </label>
-          </div>
-
-          <div className="fieldGrid three">
-            <NumberField label="Anos" value={profile.current_contribution_years} onChange={(value) => updateProfile("current_contribution_years", value)} />
-            <NumberField label="Meses" value={profile.current_contribution_months} onChange={(value) => updateProfile("current_contribution_months", value)} />
-            <NumberField label="Dias" value={profile.current_contribution_days} onChange={(value) => updateProfile("current_contribution_days", value)} />
-          </div>
-
-          <div className="fieldGrid">
-            <label className="field">
-              <span>Base futura</span>
-              <input
-                inputMode="decimal"
-                value={profile.contribution_base}
-                onChange={(event) => updateProfile("contribution_base", event.target.value)}
-              />
-            </label>
-            <label className="field">
-              <span>Categoria</span>
-              <select
-                value={profile.contributor_type}
-                onChange={(event) => updateProfile("contributor_type", event.target.value as "employee" | "individual")}
-              >
-                <option value="employee">Empregado</option>
-                <option value="individual">Individual</option>
-              </select>
-            </label>
-          </div>
-
-          <div className="fieldGrid">
-            <NumberField
-              label="Meses especiais"
-              value={profile.special_months_before_2019}
-              onChange={(value) => updateProfile("special_months_before_2019", value)}
-            />
-            <label className="field">
-              <span>Fator</span>
-              <select
-                value={profile.special_factor}
-                onChange={(event) => updateProfile("special_factor", event.target.value)}
-              >
-                <option value="1.4">1,4</option>
-                <option value="1.2">1,2</option>
-              </select>
-            </label>
-          </div>
-
-          <label className="uploadBox">
             <UploadCloud size={21} />
-            <strong>{files.length ? `${files.length} arquivo(s)` : "Documentos"}</strong>
-            <span>PDF, planilha ou ZIP</span>
-            <input multiple type="file" onChange={onFiles} />
-          </label>
+            <strong>Entrada do caso</strong>
+          </div>
+
+          <UploadBox
+            files={officeFiles}
+            icon={<Scale size={22} />}
+            label="Cálculo do escritório"
+            onChange={setOfficeFiles}
+          />
+          <UploadBox
+            files={inssFiles}
+            icon={<Gavel size={22} />}
+            label="Cálculo / impugnação do INSS"
+            onChange={setInssFiles}
+          />
+          <UploadBox
+            files={courtFiles}
+            icon={<Landmark size={22} />}
+            label="Cálculo da contadoria judicial"
+            onChange={setCourtFiles}
+          />
+          <UploadBox
+            files={autoFiles}
+            icon={<Archive size={22} />}
+            label="Processo completo, ZIP ou material misto"
+            onChange={setAutoFiles}
+          />
 
           <button className="primary" disabled={busy} onClick={analyze}>
-            {busy ? <Loader2 className="spin" size={18} /> : <Gauge size={18} />}
-            Analisar planejamento
+            {busy ? <Loader2 className="spin" size={18} /> : <FileSearch size={18} />}
+            Analisar deterministicamente
           </button>
           {error && <p className="error">{error}</p>}
         </aside>
 
         <section className="desk">
           <section className="snapshot">
-            <Metric icon={<FileCheck2 size={18} />} label="Documentos" value={planning?.documents.length ?? 0} />
-            <Metric icon={<CalendarClock size={18} />} label="Melhor DER" value={formatDate(bestScenario?.eligibility_date)} />
-            <Metric icon={<Landmark size={18} />} label="RMI estimada" value={money(bestScenario?.estimated_rmi)} />
-            <Metric icon={<AlertTriangle size={18} />} label="Pendencias criticas" value={criticalIssues} tone={criticalIssues ? "alert" : "ok"} />
-          </section>
-
-          <section className="decisionBand">
-            <div>
-              <p className="sectionKicker">Opiniao preliminar</p>
-              <h2>{planning?.recommendation ?? "Aguardando analise dos documentos e dados do segurado."}</h2>
-            </div>
-            {planning && (
-              <a className="downloadButton" href={`/api/planning/cases/${planning.id}/report.docx`}>
-                <Download size={18} />
-                DOCX
-              </a>
-            )}
-          </section>
-
-          <section className="surface">
-            <div className="sectionHead">
-              <CalendarClock size={19} />
-              <h2>Cenarios calculados</h2>
-            </div>
-            <div className="scenarioTable">
-              <div className="tableHeader">
-                <span>Regra</span>
-                <span>DER</span>
-                <span>Tempo</span>
-                <span>RMI</span>
-                <span>Investimento</span>
-                <span>Status</span>
+            <Metric icon={<FileText size={18} />} label="Documentos úteis" value={relevantCalculations.length} />
+            <Metric
+              icon={<AlertTriangle size={18} />}
+              label="Pontos de atenção"
+              tone={comparison?.divergences.length ? "alert" : undefined}
+              value={comparison?.divergences.length ?? 0}
+            />
+            <Metric
+              icon={<BadgeDollarSign size={18} />}
+              label="Com impacto em valor"
+              tone={moneyDivergences.length ? "money" : undefined}
+              value={moneyDivergences.length}
+            />
+            <div className="sourceMetric">
+              <span>Fontes identificadas</span>
+              <div className="sourcePills">
+                {sourceList(comparison).map((source) => (
+                  <SourceBadge key={source} source={source} />
+                ))}
+                {!comparison && <span className="muted">Aguardando análise</span>}
               </div>
-              {(planning?.scenarios ?? []).map((scenario) => (
-                <div className="tableRow" key={scenario.id}>
-                  <strong>{scenario.title}</strong>
-                  <span>{formatDate(scenario.eligibility_date)}</span>
-                  <span>{scenario.contribution_time}</span>
-                  <span>{money(scenario.estimated_rmi)}</span>
-                  <span>{money(scenario.future_investment)}</span>
-                  <Badge status={scenario.status}>{STATUS_LABELS[scenario.status]}</Badge>
-                </div>
+            </div>
+          </section>
+
+          <section className="priorityPanel">
+            <div className="sectionHead">
+              <ShieldAlert size={20} />
+              <h2>Prioridades para revisão</h2>
+            </div>
+            <div className="priorityGrid">
+              {priorityDivergences.map((divergence, index) => (
+                <article className={`priorityCard ${divergence.severity}`} key={divergence.id}>
+                  <div className="priorityTop">
+                    <span className="rank">P{index + 1}</span>
+                    <div>
+                      <span>{TYPE_LABELS[divergence.type]}</span>
+                      <small>{divergence.sources.map((source) => SOURCE_SHORT[source]).join(" x ")}</small>
+                    </div>
+                  </div>
+                  <strong>{divergence.title}</strong>
+                  <p>{shortDescription(divergence.description)}</p>
+                  {divergence.magnitude_money != null && (
+                    <b>{formatMoney(divergence.magnitude_money)}</b>
+                  )}
+                </article>
               ))}
-              {!planning && <p className="empty">Sem cenarios calculados.</p>}
+              {!comparison && <p className="empty">Envie os cálculos para o sistema ordenar os pontos mais relevantes.</p>}
+              {comparison && !priorityDivergences.length && <p className="empty">Nenhuma divergência material foi encontrada.</p>}
             </div>
           </section>
 
           <section className="twoColumns">
             <section className="surface">
               <div className="sectionHead">
-                <ShieldCheck size={19} />
-                <h2>Omissoes e divergencias</h2>
+                <AlertTriangle size={19} />
+                <h2>Divergências classificadas</h2>
               </div>
-              <div className="issueList">
-                {(planning?.pending_issues ?? []).map((issue) => (
-                  <article className={`issue ${issue.severity}`} key={issue.id}>
-                    <strong>{issue.title}</strong>
-                    <p>{issue.description}</p>
-                  </article>
+              <div className="divergenceList">
+                {(comparison?.divergences ?? []).map((divergence) => (
+                  <details className={`divergence ${divergence.severity}`} key={divergence.id}>
+                    <summary>
+                      <span>
+                        <strong>{divergence.title}</strong>
+                        <small>{divergence.description}</small>
+                      </span>
+                      {divergence.magnitude_money != null && <b>{formatMoney(divergence.magnitude_money)}</b>}
+                    </summary>
+                    <div className="detailGrid">
+                      <Info label="Tipo" value={TYPE_LABELS[divergence.type]} />
+                      <Info label="Favorece" value={favoredLabel(divergence.favored_party)} />
+                      <Info label="Base" value={divergence.legal_basis ?? "Regra comparativa"} />
+                    </div>
+                    {!!divergence.evidence.length && (
+                      <div className="evidenceList">
+                        {divergence.evidence.map((evidence, index) => (
+                          <blockquote key={`${divergence.id}-${index}`}>
+                            <strong>{docLabel(evidence.file_name)}</strong>
+                            {evidence.page ? <span> pág. {evidence.page}</span> : null}
+                            <p>{evidence.text}</p>
+                          </blockquote>
+                        ))}
+                      </div>
+                    )}
+                  </details>
                 ))}
-                {planning && !planning.pending_issues.length && (
-                  <article className="issue ok">
-                    <strong>Sem bloqueios</strong>
-                    <p>Nenhuma pendencia impeditiva foi detectada nesta leitura.</p>
-                  </article>
-                )}
-                {!planning && <p className="empty">As pendencias aparecem apos a analise.</p>}
+                {!comparison && <p className="empty">As divergências aparecerão aqui com tipo, impacto e evidência.</p>}
               </div>
             </section>
 
-            <section className="surface">
+            <section className="surface draftPanel">
               <div className="sectionHead">
                 <FileText size={19} />
-                <h2>Documentos classificados</h2>
+                <h2>Minuta preliminar</h2>
               </div>
-              <div className="docList">
-                {(planning?.documents ?? []).map((document) => (
-                  <article className="docItem" key={document.id}>
-                    <div>
-                      <strong>{document.file_name}</strong>
-                      <span>{DOC_LABELS[document.document_type]} · {document.pages} pag.</span>
-                    </div>
-                    <small>{Math.round(document.confidence * 100)}%</small>
-                  </article>
-                ))}
-                {!planning && <p className="empty">CNIS, CTPS, PPP, LTCAT, CTC e pareceres serao reconhecidos aqui.</p>}
-              </div>
+              <textarea
+                readOnly={!draft}
+                value={draft || "A minuta será gerada após a comparação determinística."}
+                onChange={(event) => setDraft(event.target.value)}
+              />
+              {draft && (
+                <button className="secondary" onClick={() => downloadText(draft)}>
+                  <Download size={17} />
+                  Baixar minuta .txt
+                </button>
+              )}
             </section>
           </section>
 
-          <section className="surface reportSurface">
+          <section className="surface">
             <div className="sectionHead">
               <FileText size={19} />
-              <h2>Previa do parecer</h2>
+              <h2>Documentos e campos extraídos</h2>
             </div>
-            <pre>{planning?.report_markdown ?? "O parecer revisavel sera montado apos a analise."}</pre>
-          </section>
-
-          <section className="normativeStrip">
-            {(planning?.normative_references ?? []).slice(0, 6).map((reference) => (
-              <a href={reference.source_url} key={reference.code} rel="noreferrer" target="_blank">
-                <CheckCircle2 size={15} />
-                {reference.code}
-              </a>
-            ))}
+            <div className="extractedTable">
+              <div className="tableHeader">
+                <span>Origem</span>
+                <span>Documento</span>
+                {FIELD_ORDER.map((field) => (
+                  <span key={field}>{FIELD_LABELS[field]}</span>
+                ))}
+              </div>
+              {(comparison?.calculations ?? []).map((calculation) => (
+                <div className="tableRow" key={calculation.id}>
+                  <SourceBadge source={calculation.source} />
+                  <span className="docCell">{docLabel(calculation.file_name)}</span>
+                  {FIELD_ORDER.map((field) => (
+                    <span className={cellClass(field)} key={field}>
+                      {displayValue(field, calculation[field as keyof ExtractedCalculation] as ExtractedValue | null)}
+                    </span>
+                  ))}
+                </div>
+              ))}
+              {!comparison && <p className="empty">Após a análise, cada linha mostrará os campos extraídos e a origem do dado.</p>}
+            </div>
           </section>
         </section>
       </section>
@@ -413,24 +428,27 @@ export default function Home() {
   );
 }
 
-function NumberField({
+function UploadBox({
+  files,
+  icon,
   label,
-  value,
   onChange
 }: {
+  files: File[];
+  icon: ReactNode;
   label: string;
-  value: number;
-  onChange: (value: number) => void;
+  onChange: (files: File[]) => void;
 }) {
+  function handleFiles(event: ChangeEvent<HTMLInputElement>) {
+    onChange(Array.from(event.target.files ?? []));
+  }
+
   return (
-    <label className="field">
-      <span>{label}</span>
-      <input
-        min={0}
-        type="number"
-        value={value}
-        onChange={(event) => onChange(Number(event.target.value))}
-      />
+    <label className="uploadBox">
+      {icon}
+      <strong>{label}</strong>
+      <span>{files.length ? `${files.length} arquivo(s)` : "PDF, XLSX, CSV ou ZIP"}</span>
+      <input multiple type="file" onChange={handleFiles} />
     </label>
   );
 }
@@ -441,10 +459,10 @@ function Metric({
   value,
   tone
 }: {
-  icon: React.ReactNode;
+  icon: ReactNode;
   label: string;
   value: string | number;
-  tone?: "alert" | "ok";
+  tone?: "alert" | "money";
 }) {
   return (
     <div className={`metric ${tone ?? ""}`}>
@@ -457,30 +475,105 @@ function Metric({
   );
 }
 
-function Badge({ status, children }: { status: Status; children: React.ReactNode }) {
-  return <span className={`badge ${status}`}>{children}</span>;
+function SourceBadge({ source }: { source: Source }) {
+  return <span className={`sourceBadge ${source}`}>{SOURCE_LABELS[source]}</span>;
 }
 
-function cleanProfile(profile: InsuredProfile) {
-  return {
-    ...profile,
-    contribution_base: Number(profile.contribution_base || 0),
-    special_factor: Number(profile.special_factor || 1.4),
-    target_monthly_income: profile.target_monthly_income ? Number(profile.target_monthly_income) : null
+function Info({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+function appendFiles(form: FormData, field: string, files: File[]) {
+  for (const file of files) {
+    form.append(field, file);
+  }
+}
+
+function sortDivergences(left: Divergence, right: Divergence) {
+  const severityScore = { critical: 3, warning: 2, info: 1 };
+  const moneyLeft = Number(left.magnitude_money ?? 0);
+  const moneyRight = Number(right.magnitude_money ?? 0);
+  return severityScore[right.severity] - severityScore[left.severity] || moneyRight - moneyLeft;
+}
+
+function sourceList(comparison: ComparisonResult | null): Source[] {
+  if (!comparison) {
+    return [];
+  }
+  return Array.from(new Set(comparison.calculations.map((item) => item.source).filter((source) => source !== "unknown")));
+}
+
+function favoredLabel(value: Divergence["favored_party"]) {
+  const labels = {
+    segurado: "Segurado",
+    inss: "INSS / contadoria",
+    neutral: "Neutro",
+    unknown: "A apurar"
   };
+  return labels[value];
 }
 
-function formatDate(value?: string) {
-  if (!value) {
+function shortDescription(value: string) {
+  return value.length > 135 ? `${value.slice(0, 132)}...` : value;
+}
+
+function docLabel(fileName: string) {
+  const docMatch = fileName.match(/doc\s*(\d+)/i);
+  const pageMatch = fileName.match(/pp?\.?\s*(\d+(?:-\d+)?)/i);
+  const name = docMatch ? `Doc. ${docMatch[1]}` : fileName.replace(/\.[^.]+$/, "");
+  return pageMatch ? `${name} · págs. ${pageMatch[1]}` : name;
+}
+
+function cellClass(field: string) {
+  if (MONEY_FIELDS.has(field)) {
+    return "numeric";
+  }
+  if (DATE_FIELDS.has(field)) {
+    return "dateCell";
+  }
+  return "";
+}
+
+function displayValue(field: string, value?: ExtractedValue | null) {
+  const normalized = value?.normalized;
+  if (normalized == null || normalized === "") {
     return "-";
   }
-  const [year, month, day] = value.slice(0, 10).split("-");
-  return `${day}/${month}/${year}`;
+  if (MONEY_FIELDS.has(field)) {
+    return formatMoney(normalized);
+  }
+  if (DATE_FIELDS.has(field)) {
+    return formatDate(String(normalized));
+  }
+  return String(normalized);
 }
 
-function money(value?: string | number) {
+function formatDate(value: string) {
+  if (/^\d{4}-\d{2}-\d{2}/.test(value)) {
+    const [year, month, day] = value.slice(0, 10).split("-");
+    return `${day}/${month}/${year}`;
+  }
+  return value;
+}
+
+function formatMoney(value: unknown) {
   const numberValue = Number(value ?? 0);
   return numberValue.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+function downloadText(text: string) {
+  const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = "minuta-comparacao-calculos.txt";
+  anchor.click();
+  URL.revokeObjectURL(url);
 }
 
 async function readableError(response: Response) {
